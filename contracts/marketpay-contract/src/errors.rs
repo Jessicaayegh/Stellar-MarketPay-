@@ -146,6 +146,8 @@ pub enum ContractError {
     BidAlreadyRevealed = 4009,
     /// "Commitment verification failed"
     CommitmentVerificationFailed = 4010,
+    /// "Bid does not meet the minimum increment requirement"
+    BidIncrementTooSmall = 4011,
 
     // ── 5xxx: Ratings & certificates ──────────────────────────────────────
     /// "Score must be between 1 and 5"
@@ -186,6 +188,12 @@ pub enum ContractError {
     NoMatchingQuorumProposal = 6011,
     /// "TimelockActive"
     TimelockActive = 6012,
+    /// "Proposal has not been resolved"
+    ProposalNotResolved = 6013,
+    /// "Proposal did not pass"
+    ProposalDidNotPass = 6014,
+    /// "Proposal already executed"
+    ProposalAlreadyExecuted = 6015,
 
     // ── 7xxx: Disputes & arbitration ──────────────────────────────────────
     /// "Only participants can raise a dispute"
@@ -326,6 +334,7 @@ impl ContractError {
             Self::RevealWindowClosed => "Reveal window has closed",
             Self::BidAlreadyRevealed => "Bid already revealed",
             Self::CommitmentVerificationFailed => "Commitment verification failed",
+            Self::BidIncrementTooSmall => "Bid does not meet the minimum increment requirement",
             // 5xxx
             Self::InvalidScore => "Score must be between 1 and 5",
             Self::RatingsOnlyAfterRelease => "Ratings are allowed only after escrow release",
@@ -348,6 +357,9 @@ impl ContractError {
             Self::QuorumProposalNotPassed => "Quorum change proposal has not passed",
             Self::NoMatchingQuorumProposal => "No matching quorum change proposal",
             Self::TimelockActive => "TimelockActive",
+            Self::ProposalNotResolved => "Proposal has not been resolved",
+            Self::ProposalDidNotPass => "Proposal did not pass",
+            Self::ProposalAlreadyExecuted => "Proposal already executed",
             // 7xxx
             Self::OnlyParticipantsCanDispute => "Only participants can raise a dispute",
             Self::CannotDisputeResolved => {
@@ -488,6 +500,7 @@ pub fn error_code_from_panic(msg: &str) -> Option<u32> {
         "Reveal window has closed" => Some(4008),
         "Bid already revealed" => Some(4009),
         "Commitment verification failed" => Some(4010),
+        "Bid does not meet the minimum increment requirement" => Some(4011),
         // 5xxx
         "Score must be between 1 and 5" => Some(5001),
         "Ratings are allowed only after escrow release" => Some(5002),
@@ -573,6 +586,14 @@ mod tests {
         let msg = err.panic_message();
         let parsed = error_code_from_panic(msg);
         assert_eq!(parsed, Some(err.code()));
+    }
+
+    #[test]
+    fn bid_increment_too_small_round_trips() {
+        let err = ContractError::BidIncrementTooSmall;
+        let msg = err.panic_message();
+        assert_eq!(msg, "Bid does not meet the minimum increment requirement");
+        assert_eq!(error_code_from_panic(msg), Some(4011));
     }
 
     #[test]
