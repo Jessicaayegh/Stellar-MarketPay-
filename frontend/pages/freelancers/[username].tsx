@@ -24,21 +24,6 @@ import FreelancerTierBadge from "@/components/FreelancerTierBadge";
 import ReputationBadge from "@/components/ReputationBadge";
 import FreelancerProfileSkeleton from "@/components/FreelancerProfileSkeleton";
 import PortfolioVerificationBadge from "@/components/PortfolioVerificationBadge";
-import {
-  fetchPublicProfile,
-  fetchProfileStats,
-  fetchProfileResponseTime,
-  verifyIdentity,
-  fetchSkillEndorsements,
-  endorseSkill,
-  fetchSkillBadges,
-  fetchResponseTime,
-  fetchUserCertificates,
-  fetchRatings,
-  fetchFreelancerEarnings,
-  type CertificateData,
-  type EarningPayment,
-} from "@/lib/api";
 import StateMessage from "@/components/StateMessage";
 import { useToast } from "@/components/Toast";
 import { useApi } from "@/hooks/useApi";
@@ -47,9 +32,12 @@ import {
   fetchEscrow,
   fetchFreelancerEarnings,
   fetchFreelancerNftCertificates,
+  fetchProfileResponseTime,
+  fetchProfileStats,
   fetchProfiles,
   fetchPublicProfile,
   fetchRatings,
+  fetchResponseTime,
   fetchSkillBadges,
   fetchSkillEndorsements,
   fetchUserCertificates,

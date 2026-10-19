@@ -49,12 +49,17 @@ All three jobs run in parallel with appropriate caching (npm, Cargo) for speed.
 | **ZAP (OWASP Zed Attack Proxy) scanning** | Full DAST scan is expensive for CI; false-positive rate was high with no tuning. | Reintroduce as a scheduled nightly scan when the app has a stable staging URL |
 | **cargo-fuzz** | Fuzz harnesses were stale and not maintained; blocking CI on fuzzing added friction without actionable results. | Restore when fuzz targets are updated and findings are triaged |
 
-### What was retained as-is
+### Workflows referenced in the original decision
 
 - `deploy-staging.yml` → auto-deploy on push to `main` with Discord notifications
 - `deploy-production.yml` → manual promotion with GitHub environment protection rules
 - `rollback.yml` → manual rollback with environment selection
 - `check-openapi-docs.yml` → OpenAPI spec validation on push/PR
+
+This list records the original decision and is not an inventory of current
+workflow files. The current repository has no automated staging or production
+deployment workflow; deploys are run manually on the target host. See the
+[deployment runbook](../deployment.md).
 
 ---
 

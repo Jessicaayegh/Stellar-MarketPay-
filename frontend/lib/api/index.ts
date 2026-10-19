@@ -11,6 +11,7 @@ export * from "./passkeys";
 export * from "./categories";
 export * from "./skills";
 export * from "./jobs";
+export * from "./jobTemplates";
 export * from "./insights";
 export * from "./applications";
 export * from "./profiles";

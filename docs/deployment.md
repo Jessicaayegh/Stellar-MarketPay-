@@ -1,117 +1,84 @@
-# Deployment Pipeline
+# Deployment Runbook
 
-## Overview
+## Current deployment model
 
-This repository uses a **blue-green deployment strategy** for zero-downtime releases. Two identical environments (blue and green) run behind a load balancer. During a deployment, the inactive environment is updated, health-checked, and then traffic is switched atomically. If the new environment fails health checks, an automated rollback restores the previous active environment.
+Deployments are **operator-run on the target host**. GitHub Actions currently
+runs CI, end-to-end, and security checks; there is no automated staging or
+production deployment workflow. GitHub environment approvals and GitHub
+deployment secrets are therefore not part of the current deployment path.
 
-## Blue-Green Architecture
+The production Docker Compose deployment uses blue-green services defined in
+[`docker-compose.prod.yml`](../docker-compose.prod.yml). An operator updates
+the image(s) in the registry, then runs
+[`scripts/blue-green-deploy.sh`](../scripts/blue-green-deploy.sh) from the
+repository root on the deployment host. The script pulls the standby color,
+starts it, health-checks it, changes the NGINX upstream, and removes the old
+color after the rollback window. If a pre-switch check fails, it restores the
+previous NGINX configuration and exits unsuccessfully.
 
+The Helm chart under [`deploy/helm/`](../deploy/helm/) is a deployment
+configuration, not a GitHub Actions deploy workflow.
+
+## Before deploying
+
+1. Confirm you have operator access to the target host, Docker Engine with the
+   Compose plugin, and the repository checkout at the intended release.
+2. Build and publish the frontend and backend image(s) to a registry the host
+   can access. Use image tags that identify the release; the deploy script
+   pulls the tags supplied to Compose and does not build or publish releases.
+3. On the deployment host, make the external Compose secrets
+   `database_url`, `next_public_api_url`, `grafana_admin_user`, and
+   `grafana_admin_password` available. Set `DATABASE_URL` and
+   `NEXT_PUBLIC_API_URL` in the host's deployment environment for Compose
+   interpolation. Keep secret values out of the repository and logs.
+4. Ensure the production Compose services and NGINX are already initialized,
+   the active upstream is represented by `nginx/nginx.conf`, and the host can
+   reach the configured registry and database.
+5. Select an `IMAGE_TAG` for the frontend. Set `BACKEND_IMAGE_TAG` too if the
+   backend uses a different tag; otherwise it defaults to `IMAGE_TAG`.
+
+The exact names and purposes of runtime variables and secrets are in
+[CI and deployment secrets](ci-secrets.md). No GitHub deployment secrets are
+needed for this procedure.
+
+## Deploy
+
+From the repository root on the deployment host, set the release values in
+that shell's environment, then invoke the script:
+
+```bash
+export IMAGE_TAG=registry.example.com/marketpay-frontend:release-tag
+export BACKEND_IMAGE_TAG=registry.example.com/marketpay-backend:release-tag
+export DATABASE_URL='postgresql://user:password@db-host:5432/database'
+export NEXT_PUBLIC_API_URL='https://api.example.com'
+bash scripts/blue-green-deploy.sh
 ```
-                    ┌──────────────┐
-                    │   Load Balancer │ (NGINX / Cloudflare)
-                    └──────┬───────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-         ┌────▼────┐ ┌────▼────┐
-         │  Blue    │ │  Green   │
-         │ (active) │ │ (standby)│
-         │          │ │          │
-         │ frontend │ │ frontend │
-         │ backend  │ │ backend  │
-         │ postgres │ │ postgres │
-         │ redis    │ │ redis    │
-         └──────────┘ └──────────┘
-```
 
-- **Blue** and **Green** are full, independent environments running on Docker Compose with profiles.
-- At any time, one environment is **active** (serving traffic) and the other is **standby**.
-- Deployments target the **standby** environment.
-- After a successful deployment and health check, the load balancer switches traffic to the newly deployed environment.
-- The previous active environment is kept running for a **10-minute rollback window** before being torn down.
+Use the real image references and runtime configuration for the target host.
+The script uses `docker-compose.prod.yml`, chooses the standby color based on
+`nginx/nginx.conf`, and waits for the standby backend's `/api/health` endpoint
+before switching traffic. Its defaults are 30 health-check attempts at
+5-second intervals and a 600-second rollback window; `MAX_RETRIES`,
+`RETRY_INTERVAL`, `ROLLBACK_WINDOW`, `HEALTH_ENDPOINT`, and `BACKEND_PORT` can
+be overridden in the host process environment.
 
-### Environment Naming
+Watch the script's exit status and output. A zero exit status means the traffic
+switch and post-switch health verification completed. A non-zero status means
+the deploy did not complete successfully; inspect the NGINX configuration and
+container status before attempting another deployment.
 
-Services are named with a color suffix: `frontend-blue`, `backend-blue`, `frontend-green`, `backend-green`.
+## Rollback and cleanup
 
-NGINX upstreams point to the active environment's services:
-- `backend-blue:4000` or `backend-green:4000`
-- `frontend-blue:3000` or `frontend-green:3000`
+The script restores the original NGINX configuration when standby health
+checks or post-switch verification fail. After a successful switch, it leaves
+the former active services running for the rollback window, then removes those
+containers automatically. For a later rollback, deploy the previously
+published known-good image tags by following the deploy procedure again.
 
-## Deployment Flow (Blue-Green)
+## Backup credentials
 
-1. **Determine active environment** — inspect NGINX config to find which color is currently serving traffic.
-2. **Identify standby environment** — the opposite color is the deployment target.
-3. **Pull latest images** — pull the new Docker image for the standby environment.
-4. **Start standby environment** — bring up the standby services with the new image.
-5. **Health check** — poll the standby backend's `/api/health` endpoint until it responds with HTTP 200 or retries are exhausted.
-6. **Switch traffic** — atomically update the NGINX upstream configuration to point to the standby environment and reload NGINX.
-7. **Rollback window** — keep the old active environment running for 10 minutes. If issues are detected, trigger rollback.
-8. **Teardown old environment** — after the rollback window expires, remove the old environment's containers.
-
-## Health Check
-
-The health check verifies the standby backend is ready before traffic is switched:
-
-- Endpoint: `http://backend-<standby>:4000/api/health`
-- Interval: 5 seconds
-- Timeout: 10 seconds per attempt
-- Max retries: 30 (2.5 minutes total)
-- Success condition: HTTP 200 response
-- Failure action: automated rollback (stop standby, keep active)
-
-## Rollback
-
-If the health check fails or a post-switch verification fails:
-
-1. Stop and remove the standby (new) environment containers.
-2. Reload NGINX to restore the original upstream configuration.
-3. Keep the old active environment running.
-4. Send a Discord notification with the rollback status.
-
-## GitHub Actions Workflow (`deploy.yml`)
-
-The repository uses a single, unified deployment workflow (`deploy.yml`) for all environments, triggered manually via `workflow_dispatch`.
-
-### Workflow Inputs
-
-When triggering the deployment, you must provide the following inputs:
-
-- `environment`: The target environment (e.g., `staging`, `production`).
-- `image_tag`: The specific Docker image tag to deploy.
-- `rollback`: (Boolean) If true, redeploys the specified `image_tag` as a rollback.
-
-### Deployment Execution
-
-1. **Trigger**: Manually start the workflow and provide the required inputs.
-2. **Approval Gate**: If targeting `production`, GitHub environment protection rules enforce required reviewer approval before proceeding.
-3. **Deploy**: The workflow connects to the target environment via SSH and executes the `deploy/deploy.sh` script.
-4. **Blue-Green Health Gate**: The deploy script brings up the standby environment and polls its `/api/health` endpoint. 
-   - **Success**: If the health check passes, traffic is switched to the new environment.
-   - **Failure**: If the health check fails, an automated rollback occurs, leaving the active environment untouched.
-5. **Notification**: A deployment status notification (success or rollback) is sent to Discord.
-
-## Required GitHub Secrets
-
-- `STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_APP_DIR`
-- `PRODUCTION_SSH_HOST`, `PRODUCTION_SSH_USER`, `PRODUCTION_SSH_KEY`, `PRODUCTION_APP_DIR`
-- `DISCORD_WEBHOOK_URL`
-
-## Environment Configuration
-
-- Configure GitHub `staging` and `production` environments.
-- Set `production` environment to require at least one reviewer.
-- Ensure runners can access GHCR and VPS hosts.
-
-## Deploy Scripts
-
-The `deploy/` directory contains the blue-green deployment scripts:
-
-| Script | Purpose |
-|---|---|
-| `deploy/deploy.sh` | Main orchestrator — determines active/standby, deploys, health-checks, switches traffic |
-| `deploy/health-check.sh` | Polls the standby backend's health endpoint |
-| `deploy/rollback.sh` | Stops the failed standby and restores the active environment |
-| `deploy/switch-traffic.sh` | Atomically updates NGINX config and reloads |
-
-See each script's inline documentation for usage details.
+Database backup and restore are separate host-run operations. Their S3
+credentials and PostgreSQL variables are listed in
+[CI and deployment secrets](ci-secrets.md); they are not read from GitHub
+Actions. See [database backup and restore](database-backup-restore.md) for the
+backup and restore procedures.

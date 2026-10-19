@@ -26,13 +26,11 @@ jobs:
           echo ""
           echo "✓ This workflow (CI) does **not** require secrets."
           echo ""
-          echo "**For information about other workflows that do require secrets:**"
-          echo "→ See [docs/ci-secrets.md](https://github.com/${{ github.repository }}/blob/main/docs/ci-secrets.md)"
+          echo "**There are currently no GitHub Actions deployment workflows.**"
+          echo "Deployment is run manually on the target host."
           echo ""
-          echo "**Workflows that require secrets:**"
-          echo "- Deploy (staging): SSH_HOST, SSH_USER, SSH_KEY, APP_DIR"
-          echo "- Deploy (production): SSH keys + AWS credentials + database credentials"
-          echo "- Security scanning: No additional secrets required"
+          echo "→ See the deployment and runtime secrets documentation:"
+          echo "→ See [docs/ci-secrets.md](https://github.com/${{ github.repository }}/blob/main/docs/ci-secrets.md)"
 
   secrets-scan:
     name: Secrets Scan

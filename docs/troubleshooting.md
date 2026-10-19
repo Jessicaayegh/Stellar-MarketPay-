@@ -20,7 +20,7 @@ This guide covers common issues you may encounter when developing, deploying, or
   - [CSRF 403 Errors When Calling the API From a Script](#csrf-403-errors-when-calling-the-api-from-a-script)
 - [CI/CD Issues](#cicd-issues)
   - [npm ci Peer Dependency Conflict](#npm-ci-peer-dependency-conflict)
-  - [Workflow Failures (Missing Secrets)](#workflow-failures-missing-secrets)
+  - [Deployment Runtime Configuration](#deployment-runtime-configuration)
 - [Network Issues](#network-issues)
   - [Wrong Stellar Network](#wrong-stellar-network)
   - [Transaction Submission Failed](#transaction-submission-failed)
@@ -1004,76 +1004,19 @@ Avoid committing `--legacy-peer-deps` as a permanent fix. It hides the conflict 
 
 ---
 
-### Workflow Failures (Missing Secrets)
+### Deployment Runtime Configuration
 
-**Symptom**:
-```
-Error: DATABASE_URL secret not found
-Error: Cannot deploy without CONTRACT_ID
-GitHub Actions workflow fails at deploy step
-```
+The blue-green deployment is run manually on the target host, not by GitHub Actions. If Compose reports a missing secret or a service starts without its configured URL:
 
-**Cause**:
-Required secrets not configured in GitHub repository settings.
-
-**Fix**:
-
-#### 1. Add Repository Secrets
-
-1. Go to GitHub repository
-2. Click **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-
-#### 2. Required Secrets
-
-Add these secrets:
-
-```
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-JWT_SECRET=your-secret-key-min-32-chars
-STELLAR_NETWORK=testnet
-HORIZON_URL=https://horizon-testnet.stellar.org
-CONTRACT_ID=CXXXXXXX...
-ALLOWED_ORIGINS=https://stellarmarketpay.com
-REDIS_HOST=your-redis-host
-REDIS_PASSWORD=your-redis-password
-PINATA_API_KEY=your-pinata-key
-PINATA_API_SECRET=your-pinata-secret
-```
-
-#### 3. Verify Secrets in Workflow
-
-```yaml
-# .github/workflows/deploy-production.yml
-env:
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  JWT_SECRET: ${{ secrets.JWT_SECRET }}
-  CONTRACT_ID: ${{ secrets.CONTRACT_ID }}
-```
-
-#### 4. Test Workflow Locally
-
-```bash
-# Install act (GitHub Actions local runner)
-brew install act  # macOS
-# or
-curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
-
-# Run workflow locally
-act -j deploy -s DATABASE_URL="postgresql://..." -s JWT_SECRET="..."
-```
-
-#### 5. Check Workflow Logs
-
-1. Go to **Actions** tab in GitHub
-2. Click on failed workflow
-3. Expand failed job
-4. Look for error messages
+1. Follow the [deployment runbook](deployment.md) on the deployment host.
+2. Confirm the host provides the external Compose secrets `database_url`, `next_public_api_url`, `grafana_admin_user`, and `grafana_admin_password`.
+3. Confirm `DATABASE_URL` and `NEXT_PUBLIC_API_URL` are set in the host process environment for Compose interpolation.
+4. See [CI and deployment secrets](ci-secrets.md) for the complete host runtime and backup/restore requirements. These are not GitHub Actions secrets.
 
 **Related Files**:
-- `.github/workflows/ci.yml`
-- `.github/workflows/deploy-production.yml`
-- `.github/workflows/check-openapi-docs.yml`
+- `docker-compose.prod.yml`
+- `scripts/blue-green-deploy.sh`
+- `docs/deployment.md`
 
 ---
 
